@@ -1,6 +1,6 @@
 import os
 import torch
-from transformers import AutoProcessor, AutoModelForVision2Seq
+from transformers import AutoProcessor, AutoModelForImageTextToText
 
 # Default model ID (MedGemma 4B Italian variant)
 MODEL_ID = os.environ.get("MODEL_ID", "google/medgemma-4b-it")
@@ -26,12 +26,12 @@ def load_model(preload=False):
 
     print(f"Loading model {MODEL_ID} (this happens once at cold start / build time)...")
     _processor = AutoProcessor.from_pretrained(MODEL_ID, cache_dir=cache_dir)
-    # For vision2seq models use AutoModelForVision2Seq
-    _model = AutoModelForVision2Seq.from_pretrained(
+    # MedGemma now uses an image-text-to-text architecture
+    _model = AutoModelForImageTextToText.from_pretrained(
         MODEL_ID,
-        torch_dtype=torch.float16,
+        dtype=torch.float16,  # `torch_dtype` is deprecated in newer transformers
         device_map="auto",
-        cache_dir=cache_dir
+        cache_dir=cache_dir,
     )
 
     if preload:

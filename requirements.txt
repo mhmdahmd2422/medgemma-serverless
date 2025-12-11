@@ -4,3 +4,4 @@ torch
 pillow
 requests
 accelerate
+pycares>=5.0.0
