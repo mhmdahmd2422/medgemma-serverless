@@ -11,6 +11,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
+# -------------------------
+# Hugging Face authentication for gated models
+# -------------------------
+# We accept an HF_TOKEN at build time so the image can download
+# gated models like google/medgemma-4b-it during the preload step.
+ARG HF_TOKEN
+ENV HF_TOKEN=${HF_TOKEN}
+ENV HUGGINGFACE_HUB_TOKEN=${HF_TOKEN}
+
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
