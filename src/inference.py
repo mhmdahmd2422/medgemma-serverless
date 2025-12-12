@@ -18,21 +18,28 @@ def stream_generate(prompt: str, image=None, max_new_tokens: int = 256) -> Gener
         try:
             # Multimodal processor chat format
             messages = [{"role": "user", "content": [{"type": "text", "text": prompt}]}]
-            chat = processor.apply_chat_template(messages, add_generation_prompt=True)
+            try:
+                chat = processor.apply_chat_template(messages, add_generation_prompt=True, tokenize=False)
+            except TypeError:
+                # Some processors don't expose tokenize=...; they already return a string.
+                chat = processor.apply_chat_template(messages, add_generation_prompt=True)
         except Exception:
             try:
                 # Some tokenizers accept list-of-dicts with string content
                 messages = [{"role": "user", "content": prompt}]
-                chat = processor.apply_chat_template(messages, add_generation_prompt=True)
+                try:
+                    chat = processor.apply_chat_template(messages, add_generation_prompt=True, tokenize=False)
+                except TypeError:
+                    chat = processor.apply_chat_template(messages, add_generation_prompt=True)
             except Exception:
                 chat = prompt
 
     # Prepare inputs (text + optional image) for the model
     try:
         inputs = processor(text=chat, images=image, return_tensors="pt")
-    except TypeError:
+    except (TypeError, ValueError):
         # Text-only models/tokenizers do not accept `images=...`
-        inputs = processor(chat, return_tensors="pt")
+        inputs = processor(chat if isinstance(chat, str) else prompt, return_tensors="pt")
     inputs = {k: v.to(model.device) for k, v in inputs.items()}
 
     # Create streamer attached to the tokenizer
