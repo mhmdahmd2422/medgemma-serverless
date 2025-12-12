@@ -21,6 +21,7 @@ import sys
 import base64
 import types
 from io import BytesIO
+import time
 
 # Ensure repo root is on sys.path so `import src...` works when running as a script.
 _REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -158,11 +159,36 @@ def test_real_model_smoke():
     Minimal real-model smoke using current MODEL_ID.
     This is meant to run with a small dev model like google/gemma-2-2b-it.
     """
+    import os
     from src.inference import stream_generate
 
-    text = "".join(stream_generate("What are common symptoms of the flu?", None, 64))
+    if os.environ.get("SKIP_REAL_MODEL_SMOKE") == "1":
+        print("[SKIP] real-model smoke test (SKIP_REAL_MODEL_SMOKE=1)")
+        return
+
+    model_id = os.environ.get("MODEL_ID", "<unset>")
+    print(f"[INFO] real-model smoke: MODEL_ID={model_id!r} (this may download/load on first run)")
+
+    start = time.time()
+    max_seconds = float(os.environ.get("REAL_MODEL_SMOKE_MAX_SECONDS", "120"))
+    max_chars = int(os.environ.get("REAL_MODEL_SMOKE_MAX_CHARS", "400"))
+
+    chunks = []
+    char_count = 0
+    for chunk in stream_generate("What are common symptoms of the flu?", None, 32):
+        chunks.append(chunk)
+        char_count += len(chunk)
+        if char_count >= max_chars:
+            break
+        if time.time() - start > max_seconds:
+            break
+
+    text = "".join(chunks)
+    elapsed = time.time() - start
+    print(f"[INFO] real-model smoke: got {len(text)} chars in {elapsed:.1f}s")
+
     _assert(isinstance(text, str), "Expected output string")
-    _assert(len(text.strip()) > 0, "Expected non-empty output")
+    _assert(len(text.strip()) > 0, "Expected non-empty output from real-model smoke test")
 
 
 def main():
