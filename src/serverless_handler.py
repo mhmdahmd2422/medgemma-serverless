@@ -1,13 +1,14 @@
 import base64
 from io import BytesIO
 from PIL import Image
-import runpod
 from typing import Generator
 
 from src.inference import stream_generate
 
 # Top-level function that Runpod starts
 def runpod_start():
+    # Import runpod lazily so local dev/tests don't require Runpod's serverless deps.
+    import runpod
     # configure serverless to return streaming generator
     runpod.serverless.start({"handler": handler, "return_aggregate_stream": False})
 
