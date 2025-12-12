@@ -12,6 +12,27 @@ MODEL_ID = os.environ.get("MODEL_ID", "google/medgemma-4b-it")
 _model = None
 _processor = None
 
+def _pick_cache_dir() -> str:
+    # Prefer explicit override first (useful for WSL/local dev).
+    override = os.environ.get("MODEL_CACHE_DIR")
+    if override:
+        return override
+
+    # In containers/Runpod we bake and/or persist models under /models.
+    preferred = "/models"
+    try:
+        os.makedirs(preferred, exist_ok=True)
+        test_path = os.path.join(preferred, ".write_test")
+        with open(test_path, "w") as f:
+            f.write("ok")
+        os.remove(test_path)
+        return preferred
+    except Exception:
+        pass
+
+    # Fall back to Hugging Face default cache under the user home.
+    return os.path.expanduser("~/.cache/huggingface")
+
 def load_model(preload=False):
     """Load and cache the model and processor.
 
@@ -25,8 +46,8 @@ def load_model(preload=False):
     if _model is not None and _processor is not None:
         return _model, _processor
 
-    # Cache directory
-    cache_dir = "/models"
+    # Cache directory (container-friendly by default; override with MODEL_CACHE_DIR for local dev).
+    cache_dir = _pick_cache_dir()
     os.environ.setdefault("HF_HOME", cache_dir)
 
     print(f"Loading model {MODEL_ID} (this happens once at cold start / build time)...")
