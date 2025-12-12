@@ -74,6 +74,10 @@ def test_inference_preprocess_contracts():
     """
     import src.inference as inf
 
+    class FakeTensor:
+        def to(self, device):
+            return self
+
     class FakeStreamer:
         def __init__(self, tokenizer, skip_prompt: bool, skip_special_tokens: bool):
             self._chunks = ["ok"]
@@ -98,7 +102,7 @@ def test_inference_preprocess_contracts():
 
         def __call__(self, text=None, images=None, return_tensors=None):
             _assert(isinstance(text, str), "Expected text to be a string")
-            return {"input_ids": [1]}
+            return {"input_ids": FakeTensor()}
 
     class FakeTokenizerText:
         def apply_chat_template(self, messages, add_generation_prompt: bool, tokenize: bool = False):
@@ -107,7 +111,7 @@ def test_inference_preprocess_contracts():
 
         def __call__(self, text, return_tensors=None):
             _assert(isinstance(text, str), "Expected text to be a string")
-            return {"input_ids": [1]}
+            return {"input_ids": FakeTensor()}
 
     # Patch streamer + threading to avoid background execution complexity.
     original_streamer = inf.TextIteratorStreamer
