@@ -26,11 +26,21 @@ def load_model(preload=False):
 
     print(f"Loading model {MODEL_ID} (this happens once at cold start / build time)...")
     _processor = AutoProcessor.from_pretrained(MODEL_ID, cache_dir=cache_dir)
+
+    # Choose dtype / device map depending on whether a GPU is available.
+    # fp16 on CPU can easily produce NaNs, so we stick to fp32 when no CUDA.
+    if torch.cuda.is_available():
+        dtype = torch.float16
+        device_map = "auto"
+    else:
+        dtype = torch.float32
+        device_map = "cpu"
+
     # MedGemma now uses an image-text-to-text architecture
     _model = AutoModelForImageTextToText.from_pretrained(
         MODEL_ID,
-        dtype=torch.float16,  # `torch_dtype` is deprecated in newer transformers
-        device_map="auto",
+        dtype=dtype,  # `torch_dtype` is deprecated in newer transformers
+        device_map=device_map,
         cache_dir=cache_dir,
     )
 
