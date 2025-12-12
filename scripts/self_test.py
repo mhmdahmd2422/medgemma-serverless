@@ -16,9 +16,16 @@ Usage (WSL):
 
 from __future__ import annotations
 
+import os
+import sys
 import base64
 import types
 from io import BytesIO
+
+# Ensure repo root is on sys.path so `import src...` works when running as a script.
+_REPO_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if _REPO_ROOT not in sys.path:
+    sys.path.insert(0, _REPO_ROOT)
 
 
 def _assert(cond: bool, msg: str):
