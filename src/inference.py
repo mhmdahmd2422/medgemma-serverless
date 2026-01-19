@@ -53,6 +53,10 @@ def stream_generate(prompt: str, image=None, max_new_tokens: int = 256) -> Gener
         # For this chatty vision-language model, sampling gives more useful answers.
         do_sample=True,
         temperature=0.7,
+        # Add top_p and top_k for numerical stability to prevent
+        # "probability tensor contains inf, nan or element < 0" CUDA errors
+        top_p=0.9,
+        top_k=50,
     )
 
     # Run generation in background thread so we can yield from streamer
