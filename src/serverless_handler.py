@@ -23,8 +23,9 @@ def _as_bool(v) -> bool:
 def runpod_start():
     # Import runpod lazily so local dev/tests don't require Runpod's serverless deps.
     import runpod
-    # configure serverless to return streaming generator
-    runpod.serverless.start({"handler": handler, "return_aggregate_stream": False})
+    # configure serverless to aggregate streaming output into a list
+    # This allows both streaming (via /stream endpoint) and sync (via /runsync) to work
+    runpod.serverless.start({"handler": handler, "return_aggregate_stream": True})
 
 def load_image(input_data):
     """Load image from URL, base64 string, or data URL."""
