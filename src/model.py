@@ -59,9 +59,10 @@ def load_model(preload=False):
         _processor = AutoTokenizer.from_pretrained(MODEL_ID, cache_dir=cache_dir)
 
     # Choose dtype / device map depending on whether a GPU is available.
-    # fp16 on CPU can easily produce NaNs, so we stick to fp32 when no CUDA.
+    # bfloat16 is more numerically stable than float16 and avoids inf/nan issues.
     if torch.cuda.is_available():
-        dtype = torch.float16
+        # Use bfloat16 for better numerical stability (avoids CUDA multinomial errors)
+        dtype = torch.bfloat16
         device_map = "auto"
     else:
         dtype = torch.float32
@@ -72,14 +73,14 @@ def load_model(preload=False):
     try:
         _model = AutoModelForImageTextToText.from_pretrained(
             MODEL_ID,
-            dtype=dtype,  # `torch_dtype` is deprecated in newer transformers
+            torch_dtype=dtype,
             device_map=device_map,
             cache_dir=cache_dir,
         )
     except ValueError:
         _model = AutoModelForCausalLM.from_pretrained(
             MODEL_ID,
-            dtype=dtype,
+            torch_dtype=dtype,
             device_map=device_map,
             cache_dir=cache_dir,
         )
