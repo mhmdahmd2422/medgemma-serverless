@@ -168,6 +168,9 @@ def handler(event):
     """
     Handle both legacy format and OpenAI-compatible format.
 
+    For streaming: Uses yield from to make this handler a generator function.
+    RunPod serverless with return_aggregate_stream=False will stream each yielded value.
+
     Legacy format:
         { "prompt": "...", "image": "<url|base64|null>", "max_new_tokens": 256, "stream": false }
         or { "input": { "prompt": "...", ... } }
@@ -195,11 +198,13 @@ def handler(event):
         # OpenAI-compatible format
         messages = openai_input.get("messages", [])
         if not messages:
-            return {"error": "Missing 'messages' field in openai_input."}
+            yield {"error": "Missing 'messages' field in openai_input."}
+            return
 
         prompt, image_data = parse_openai_messages(messages)
         if not prompt:
-            return {"error": "Could not extract prompt from messages."}
+            yield {"error": "Could not extract prompt from messages."}
+            return
 
         img = load_image(image_data) if image_data else None
         max_new_tokens = openai_input.get("max_tokens", 4096)
@@ -207,15 +212,16 @@ def handler(event):
         model_id = openai_input.get("model", "google/medgemma-4b-it")
 
         if stream:
-            # Return SSE-formatted streaming response
-            return stream_generate_sse(prompt, img, max_new_tokens=max_new_tokens, model_id=model_id)
+            # Streaming: yield each SSE chunk directly
+            yield from stream_generate_sse(prompt, img, max_new_tokens=max_new_tokens, model_id=model_id)
+            return
 
-        # Non-streaming: return full OpenAI-compatible response
+        # Non-streaming: yield full OpenAI-compatible response
         text = "".join(stream_generate(prompt, img, max_new_tokens=max_new_tokens))
         prompt_tokens = len(prompt.split())
         completion_tokens = len(text.split())
 
-        return {
+        yield {
             "id": f"chatcmpl-{uuid.uuid4().hex[:12]}",
             "object": "chat.completion",
             "created": int(__import__("time").time()),
@@ -234,23 +240,26 @@ def handler(event):
                 "total_tokens": prompt_tokens + completion_tokens
             }
         }
+        return
 
     # Legacy format handling
     prompt = payload.get("prompt") or input_payload.get("prompt")
     if not prompt:
-        return {"error": "Missing 'prompt' field in event."}
+        yield {"error": "Missing 'prompt' field in event."}
+        return
 
     image_data = payload.get("image") or input_payload.get("image")
     img = load_image(image_data) if image_data else None
 
     max_new_tokens = payload.get("max_new_tokens", input_payload.get("max_new_tokens", 256))
 
-    # Support both sync and streaming:
-    # - Runpod dashboard "Test Input" is typically sync and requires JSON-serializable output.
-    # - Clients can request streaming explicitly by sending {"stream": true}.
+    # Support both sync and streaming
     stream = _as_bool(payload.get("stream", input_payload.get("stream", False)))
     if stream:
-        return stream_generate(prompt, img, max_new_tokens=max_new_tokens)
+        # Streaming: yield each token directly
+        yield from stream_generate(prompt, img, max_new_tokens=max_new_tokens)
+        return
 
+    # Non-streaming: yield full response
     text = "".join(stream_generate(prompt, img, max_new_tokens=max_new_tokens))
-    return {"output": text}
+    yield {"output": text}
