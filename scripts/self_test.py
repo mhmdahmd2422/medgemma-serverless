@@ -36,6 +36,7 @@ def _assert(cond: bool, msg: str):
 
 def test_serverless_handler_contract():
     import src.serverless_handler as sh
+    import json
 
     # Monkeypatch stream_generate so we don't need a model for this test.
     def fake_stream_generate(prompt: str, image=None, max_new_tokens: int = 256):
@@ -48,14 +49,23 @@ def test_serverless_handler_contract():
     out = sh.handler({})
     _assert(isinstance(out, dict) and "error" in out, "Expected error dict for missing prompt")
 
-    # prompt at top-level
+    # prompt at top-level (legacy format - non-streaming by default)
     out = sh.handler({"prompt": "x", "max_new_tokens": 5})
-    _assert(isinstance(out, types.GeneratorType), "Expected generator return for prompt")
+    _assert(isinstance(out, dict) and "output" in out, "Expected dict with output for non-streaming legacy format")
+    _assert(out["output"] == "hello world", "Expected output to be 'hello world'")
+
+    # prompt at top-level with stream=true (legacy format)
+    out = sh.handler({"prompt": "x", "max_new_tokens": 5, "stream": True})
+    _assert(isinstance(out, types.GeneratorType), "Expected generator return for streaming legacy format")
     _assert("".join(list(out)) == "hello world", "Expected streaming strings to join")
 
-    # prompt under input
+    # prompt under input (legacy format - non-streaming by default)
     out = sh.handler({"input": {"prompt": "x"}})
-    _assert(isinstance(out, types.GeneratorType), "Expected generator return for input.prompt")
+    _assert(isinstance(out, dict) and "output" in out, "Expected dict with output for input.prompt")
+
+    # prompt under input with stream=true
+    out = sh.handler({"input": {"prompt": "x", "stream": True}})
+    _assert(isinstance(out, types.GeneratorType), "Expected generator return for input.prompt with stream")
 
     # base64 image should parse (we don't validate image content deeply here)
     from PIL import Image
@@ -63,8 +73,113 @@ def test_serverless_handler_contract():
     buf = BytesIO()
     Image.new("RGB", (1, 1), color=(255, 0, 0)).save(buf, format="PNG")
     b64 = base64.b64encode(buf.getvalue()).decode("utf-8")
-    out = sh.handler({"prompt": "x", "image": b64})
+    out = sh.handler({"prompt": "x", "image": b64, "stream": True})
     _assert(isinstance(out, types.GeneratorType), "Expected generator with base64 image")
+
+
+def test_openai_compatible_format():
+    """Test OpenAI-compatible format from ConnectX API."""
+    import src.serverless_handler as sh
+    import json
+
+    # Monkeypatch stream_generate so we don't need a model for this test.
+    def fake_stream_generate(prompt: str, image=None, max_new_tokens: int = 256):
+        yield "hello"
+        yield " world"
+
+    sh.stream_generate = fake_stream_generate  # type: ignore[attr-defined]
+
+    # OpenAI-compatible format with streaming
+    openai_event = {
+        "input": {
+            "openai_route": "/v1/chat/completions",
+            "openai_input": {
+                "model": "google/medgemma-4b-it",
+                "messages": [
+                    {"role": "system", "content": [{"type": "text", "text": "You are a medical assistant."}]},
+                    {"role": "user", "content": [{"type": "text", "text": "What is diabetes?"}]}
+                ],
+                "stream": True,
+                "max_tokens": 4096
+            }
+        }
+    }
+
+    out = sh.handler(openai_event)
+    _assert(isinstance(out, types.GeneratorType), "Expected generator for OpenAI streaming format")
+
+    # Collect SSE chunks and verify format
+    chunks = list(out)
+    _assert(len(chunks) > 0, "Expected at least one SSE chunk")
+
+    # First chunks should be data: {...}\n\n format
+    for chunk in chunks[:-1]:  # Exclude [DONE]
+        if chunk.strip() == "data: [DONE]":
+            continue
+        _assert(chunk.startswith("data: "), f"Expected SSE format, got: {chunk[:50]}")
+        json_str = chunk[6:].strip()  # Remove "data: " prefix
+        if json_str and json_str != "[DONE]":
+            data = json.loads(json_str)
+            _assert("choices" in data, "Expected 'choices' in SSE chunk")
+            _assert("id" in data, "Expected 'id' in SSE chunk")
+
+    # Last chunk should be [DONE]
+    _assert(chunks[-1].strip() == "data: [DONE]", "Expected final [DONE] marker")
+
+    # OpenAI-compatible format with images (data URL)
+    from PIL import Image
+    buf = BytesIO()
+    Image.new("RGB", (1, 1), color=(255, 0, 0)).save(buf, format="PNG")
+    b64 = base64.b64encode(buf.getvalue()).decode("utf-8")
+    data_url = f"data:image/png;base64,{b64}"
+
+    openai_with_image = {
+        "input": {
+            "openai_input": {
+                "model": "google/medgemma-4b-it",
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": "Describe this image."},
+                            {"type": "image_url", "image_url": {"url": data_url}}
+                        ]
+                    }
+                ],
+                "stream": True,
+                "max_tokens": 256
+            }
+        }
+    }
+
+    out = sh.handler(openai_with_image)
+    _assert(isinstance(out, types.GeneratorType), "Expected generator for OpenAI format with image")
+    chunks = list(out)
+    _assert(len(chunks) > 0, "Expected output with image")
+
+    # Non-streaming OpenAI format
+    openai_non_stream = {
+        "input": {
+            "openai_input": {
+                "model": "google/medgemma-4b-it",
+                "messages": [
+                    {"role": "user", "content": "What is the flu?"}
+                ],
+                "stream": False,
+                "max_tokens": 256
+            }
+        }
+    }
+
+    out = sh.handler(openai_non_stream)
+    _assert(isinstance(out, dict), "Expected dict for non-streaming OpenAI format")
+    _assert("choices" in out, "Expected 'choices' in response")
+    _assert(out["choices"][0]["message"]["content"] == "hello world", "Expected content in message")
+    _assert("usage" in out, "Expected 'usage' in response")
+
+    # Missing messages -> error
+    out = sh.handler({"input": {"openai_input": {"model": "test"}}})
+    _assert(isinstance(out, dict) and "error" in out, "Expected error for missing messages")
 
 
 def test_inference_preprocess_contracts():
@@ -193,7 +308,10 @@ def test_real_model_smoke():
 
 def main():
     test_serverless_handler_contract()
-    print("[OK] serverless handler contract")
+    print("[OK] serverless handler contract (legacy format)")
+
+    test_openai_compatible_format()
+    print("[OK] OpenAI-compatible format (SSE streaming)")
 
     test_inference_preprocess_contracts()
     print("[OK] inference preprocess contracts (mocked)")

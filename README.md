@@ -41,7 +41,25 @@ medgemma-serverless-repo/
    - Entrypoint: `python handler.py`
    - Enable streaming if desired (the handler is already configured).
 
+## Runpod "Build from GitHub" vs "Docker image" (important for gated models)
+
+`google/medgemma-4b-it` is gated on Hugging Face and requires an HF token to download.
+
+- **If you build the image yourself (local/EC2)**:
+  - By default, the image is built **without baking model weights**.
+  - If you want to preload (bake) weights into `/models` to minimize cold starts, pass both `HF_TOKEN` and `PRELOAD_MODEL=1`:
+    ```bash
+    docker build --platform linux/amd64 --build-arg PRELOAD_MODEL=1 --build-arg HF_TOKEN=hf_... -t <your-registry>/medgemma-serverless:latest .
+    ```
+  - This minimizes cold starts.
+
+- **If you use Runpod "Build from GitHub"**:
+  - The build environment may not provide `HF_TOKEN`, so the Dockerfile will **skip preloading**.
+  - In this mode you must set a Secret on the endpoint:
+    - `HF_TOKEN` (or `HUGGINGFACE_HUB_TOKEN`)
+  - The model will download on the first cold start and cache under `/models`.
+
 ## Notes
-- The Dockerfile preloads the model into `/models` during image build to minimize cold starts.
+- The Dockerfile builds a **small image by default** (no model weights baked in). It can optionally preload the model into `/models` during build when `PRELOAD_MODEL=1` and `HF_TOKEN` are provided.
 - For production, prefer hosting model artifacts in a private model store or bake them into the image.
 - If you want OpenAI-compatible streaming JSON (delta messages), see `src/serverless_handler.py` for where to adapt the generator format.
