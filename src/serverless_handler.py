@@ -39,19 +39,37 @@ def load_image(input_data):
             _, base64_data = input_data.split(",", 1)
             img_bytes = base64.b64decode(base64_data)
             return Image.open(BytesIO(img_bytes)).convert("RGB")
-        except Exception:
-            raise ValueError("Invalid data URL format for image.")
+        except Exception as e:
+            raise ValueError(f"Invalid data URL format for image: {e}")
 
     if isinstance(input_data, str) and (input_data.startswith("http://") or input_data.startswith("https://")):
         import requests
-        return Image.open(BytesIO(requests.get(input_data).content)).convert("RGB")
+        try:
+            # Add headers to appear as a browser and follow redirects
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+                "Accept": "image/*,*/*"
+            }
+            response = requests.get(input_data, headers=headers, timeout=30, allow_redirects=True)
+            response.raise_for_status()
+
+            # Check content type to ensure it's an image
+            content_type = response.headers.get("content-type", "").lower()
+            if not any(img_type in content_type for img_type in ["image/", "application/octet-stream"]):
+                raise ValueError(f"URL did not return an image. Content-Type: {content_type}")
+
+            return Image.open(BytesIO(response.content)).convert("RGB")
+        except requests.RequestException as e:
+            raise ValueError(f"Failed to fetch image from URL: {e}")
+        except Exception as e:
+            raise ValueError(f"Failed to load image from URL: {e}")
 
     # assume base64
     try:
         img_bytes = base64.b64decode(input_data)
         return Image.open(BytesIO(img_bytes)).convert("RGB")
-    except Exception:
-        raise ValueError("Invalid image input. Provide URL, data URL, or base64 string.")
+    except Exception as e:
+        raise ValueError(f"Invalid image input. Provide URL, data URL, or base64 string. Error: {e}")
 
 def parse_openai_messages(messages: List[Dict[str, Any]]) -> Tuple[str, Optional[str]]:
     """

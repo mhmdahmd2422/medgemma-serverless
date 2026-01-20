@@ -11,13 +11,22 @@ def stream_generate(prompt: str, image=None, max_new_tokens: int = 256) -> Gener
     model, processor = load_model()
 
     # Wrap prompt into a chat template when available.
-    # - For MedGemma/Gemma3 processors: use multimodal message format.
+    # - For MedGemma/Gemma3 processors: use multimodal message format with image placeholder.
     # - For text-only tokenizers: use simple chat template if supported, else raw prompt.
     chat = prompt
     if hasattr(processor, "apply_chat_template"):
         try:
             # Multimodal processor chat format
-            messages = [{"role": "user", "content": [{"type": "text", "text": prompt}]}]
+            # When an image is provided, include {"type": "image"} placeholder in content
+            if image is not None:
+                content = [
+                    {"type": "image"},  # Image placeholder for the processor
+                    {"type": "text", "text": prompt}
+                ]
+            else:
+                content = [{"type": "text", "text": prompt}]
+
+            messages = [{"role": "user", "content": content}]
             try:
                 chat = processor.apply_chat_template(messages, add_generation_prompt=True, tokenize=False)
             except TypeError:
