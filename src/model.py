@@ -9,6 +9,8 @@ from transformers import (
 
 # Default model ID (MedGemma 4B Italian variant)
 MODEL_ID = os.environ.get("MODEL_ID", "google/medgemma-4b-it")
+# HuggingFace token for gated model access (e.g., MedGemma)
+HF_TOKEN = os.environ.get("HF_TOKEN")
 _model = None
 _processor = None
 
@@ -54,9 +56,9 @@ def load_model(preload=False):
 
     # Some models (e.g. Gemma2 text-only) don't have an AutoProcessor. Fall back to AutoTokenizer.
     try:
-        _processor = AutoProcessor.from_pretrained(MODEL_ID, cache_dir=cache_dir)
+        _processor = AutoProcessor.from_pretrained(MODEL_ID, cache_dir=cache_dir, token=HF_TOKEN)
     except Exception:
-        _processor = AutoTokenizer.from_pretrained(MODEL_ID, cache_dir=cache_dir)
+        _processor = AutoTokenizer.from_pretrained(MODEL_ID, cache_dir=cache_dir, token=HF_TOKEN)
 
     # Choose dtype / device map depending on whether a GPU is available.
     # bfloat16 is more numerically stable than float16 and avoids inf/nan issues.
@@ -76,6 +78,7 @@ def load_model(preload=False):
             torch_dtype=dtype,
             device_map=device_map,
             cache_dir=cache_dir,
+            token=HF_TOKEN,
         )
     except ValueError:
         _model = AutoModelForCausalLM.from_pretrained(
@@ -83,6 +86,7 @@ def load_model(preload=False):
             torch_dtype=dtype,
             device_map=device_map,
             cache_dir=cache_dir,
+            token=HF_TOKEN,
         )
 
     if preload:

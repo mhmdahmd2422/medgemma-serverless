@@ -225,7 +225,17 @@ def handler(event):
             yield {"error": "Could not extract prompt from messages."}
             return
 
-        img = load_image(image_data) if image_data else None
+        # Load image with error handling
+        img = None
+        if image_data:
+            try:
+                img = load_image(image_data)
+            except ValueError as e:
+                yield {"error": f"Image loading failed: {e}"}
+                return
+            except Exception as e:
+                yield {"error": f"Unexpected error loading image: {e}"}
+                return
         max_new_tokens = openai_input.get("max_tokens", 4096)
         stream = _as_bool(openai_input.get("stream", True))
         model_id = openai_input.get("model", "google/medgemma-4b-it")
@@ -268,7 +278,17 @@ def handler(event):
         return
 
     image_data = payload.get("image") or input_payload.get("image")
-    img = load_image(image_data) if image_data else None
+    # Load image with error handling
+    img = None
+    if image_data:
+        try:
+            img = load_image(image_data)
+        except ValueError as e:
+            yield {"error": f"Image loading failed: {e}"}
+            return
+        except Exception as e:
+            yield {"error": f"Unexpected error loading image: {e}"}
+            return
 
     max_new_tokens = payload.get("max_new_tokens", input_payload.get("max_new_tokens", 256))
 
