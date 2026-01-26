@@ -17,7 +17,7 @@ WORKDIR /app
 # We accept an HF_TOKEN at build time so the image can download
 # gated models like google/medgemma-4b-it during the preload step.
 ARG HF_TOKEN
-ARG PRELOAD_MODEL=0
+ARG PRELOAD_MODEL=1
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
